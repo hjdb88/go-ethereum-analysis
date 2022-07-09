@@ -118,6 +118,7 @@ func (result *ExecutionResult) Revert() []byte {
 func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation bool, isHomestead, isEIP2028 bool) (uint64, error) {
 	// Set the starting gas for the raw transaction
 	var gas uint64
+	// 1. 如果是创建合约调用起步价是 530000 gas, 如果是普通合约调用起步价是 21000 gas
 	if isContractCreation && isHomestead {
 		gas = params.TxGasContractCreation
 	} else {
@@ -127,6 +128,7 @@ func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation b
 	if len(data) > 0 {
 		// Zero and non-zero bytes are priced differently
 		var nz uint64
+		// 2. 计算输入的合约数据中非零字节和零字节的数量
 		for _, byt := range data {
 			if byt != 0 {
 				nz++
@@ -137,15 +139,20 @@ func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation b
 		if isEIP2028 {
 			nonZeroGas = params.TxDataNonZeroGasEIP2028
 		}
+		// 检查是否溢出
 		if (math.MaxUint64-gas)/nonZeroGas < nz {
 			return 0, ErrGasUintOverflow
 		}
+		// 计算 gas 消耗, 零字节 4gas/字节, 非零字节 68(16)gas/字节
+		// 零字节消耗 gas 少是因为 RLP 编码协议可以压缩零字节, 在向 Trie 存储这些数据时, 零字节占用空间很少
 		gas += nz * nonZeroGas
 
+		// 检查是否溢出
 		z := uint64(len(data)) - nz
 		if (math.MaxUint64-gas)/params.TxDataZeroGas < z {
 			return 0, ErrGasUintOverflow
 		}
+		// 计算所消耗的 gas 数量
 		gas += z * params.TxDataZeroGas
 	}
 	if accessList != nil {
@@ -190,6 +197,7 @@ func (st *StateTransition) to() common.Address {
 }
 
 func (st *StateTransition) buyGas() error {
+	// 1. 计算交易消耗的 eth 数量, 通过交易发起者提供的 gas * gasPrice
 	mgval := new(big.Int).SetUint64(st.msg.Gas())
 	mgval = mgval.Mul(mgval, st.gasPrice)
 	balanceCheck := mgval
@@ -198,15 +206,19 @@ func (st *StateTransition) buyGas() error {
 		balanceCheck = balanceCheck.Mul(balanceCheck, st.gasFeeCap)
 		balanceCheck.Add(balanceCheck, st.value)
 	}
+	// 2. 判断当前账户的余额是否能覆盖这笔交易预计消耗的 gas 数量
 	if have, want := st.state.GetBalance(st.msg.From()), balanceCheck; have.Cmp(want) < 0 {
 		return fmt.Errorf("%w: address %v have %v want %v", ErrInsufficientFunds, st.msg.From().Hex(), have, want)
 	}
+	// 3. 从整个区块的 gaspool 中扣减掉这个交易预计消耗的 gas 数量
 	if err := st.gp.SubGas(st.msg.Gas()); err != nil {
 		return err
 	}
+	// 4. 这部分 gas 数量转移到 st.gas 中, 用于后续 EVM 中执行命令时真实扣减 gas 数量
 	st.gas += st.msg.Gas()
-
+	// 5. st.initialGas 记录最初分配的 gas 数量
 	st.initialGas = st.msg.Gas()
+	// 6. 从发起者账户中扣减对应的 eth 数量(如果交易未被执行成功, 会被回滚)
 	st.state.SubBalance(st.msg.From(), mgval)
 	return nil
 }
@@ -283,7 +295,18 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	// 5. there is no overflow when calculating intrinsic gas
 	// 6. caller has enough balance to cover asset transfer for **topmost** call
 
+	// 在应用消息之前，首先检查该消息是否满足所有共识规则。规则包括这些条款
+	//
+	// 1. 消息调用者的 nonce 正确
+	// 2. 调用者有足够的余额来支付交易费用(gaslimit * gasprice)
+	// 3. 所需的 gas 量在区块中可用
+	// 4. 购买的 gas 足以覆盖固有成本
+	// 5. 计算固有成本的 gas 时没有溢出
+	// 6. 调用者有足够的余额来支付 **topmost** 调用的资产转移
+
 	// Check clauses 1-3, buy gas if everything is correct
+
+	// 检查第 1-3 条，如果一切正确，则购买 gas
 	if err := st.preCheck(); err != nil {
 		return nil, err
 	}
@@ -296,13 +319,18 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	}
 
 	var (
-		msg              = st.msg
-		sender           = vm.AccountRef(msg.From())
-		rules            = st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil)
+		msg = st.msg
+		// 交易的发起者地址
+		sender = vm.AccountRef(msg.From())
+		rules  = st.evm.ChainConfig().Rules(st.evm.Context.BlockNumber, st.evm.Context.Random != nil)
+		// msg.To() == nil 代表创建合约
 		contractCreation = msg.To() == nil
 	)
 
 	// Check clauses 4-5, subtract intrinsic gas if everything is correct
+
+	// 检查第 4-5 条，如果一切正确，则减去固有成本的 gas
+	// 计算固有成本的 gas
 	gas, err := IntrinsicGas(st.data, st.msg.AccessList(), contractCreation, rules.IsHomestead, rules.IsIstanbul)
 	if err != nil {
 		return nil, err
@@ -310,6 +338,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	if st.gas < gas {
 		return nil, fmt.Errorf("%w: have %d, want %d", ErrIntrinsicGas, st.gas, gas)
 	}
+	// st.gas 减去固有成本的 gas
 	st.gas -= gas
 
 	// Check clause 6
@@ -325,7 +354,9 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret   []byte
 		vmerr error // vm errors do not effect consensus and are therefore not assigned to err
 	)
+	// 判断合约类型, 然后根据类型调用 EVM 执行
 	if contractCreation {
+		// 进行创建合约操作 st.data = message.data() = tx.txdata.payload
 		ret, _, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
 	} else {
 		// Increment the nonce for the next transaction
@@ -333,17 +364,21 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret, st.gas, vmerr = st.evm.Call(sender, st.to(), st.data, st.gas, st.value)
 	}
 
+	// 退还未消耗的 gas
 	if !rules.IsLondon {
 		// Before EIP-3529: refunds were capped to gasUsed / 2
+		// 退款上限为已用 gas 的一半
 		st.refundGas(params.RefundQuotient)
 	} else {
 		// After EIP-3529: refunds are capped to gasUsed / 5
+		// 退款上限为已用 gas 的五分之一
 		st.refundGas(params.RefundQuotientEIP3529)
 	}
 	effectiveTip := st.gasPrice
 	if rules.IsLondon {
 		effectiveTip = cmath.BigMin(st.gasTipCap, new(big.Int).Sub(st.gasFeeCap, st.evm.Context.BaseFee))
 	}
+	// 向打包该交易的矿工账户地址添加手续费
 	st.state.AddBalance(st.evm.Context.Coinbase, new(big.Int).Mul(new(big.Int).SetUint64(st.gasUsed()), effectiveTip))
 
 	return &ExecutionResult{
@@ -355,6 +390,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 
 func (st *StateTransition) refundGas(refundQuotient uint64) {
 	// Apply refund counter, capped to a refund quotient
+	// 退款上限为已用 gas 的 refundQuotient 分之一
 	refund := st.gasUsed() / refundQuotient
 	if refund > st.state.GetRefund() {
 		refund = st.state.GetRefund()
@@ -367,6 +403,7 @@ func (st *StateTransition) refundGas(refundQuotient uint64) {
 
 	// Also return remaining gas to the block gas counter so it is
 	// available for the next transaction.
+	// 将该交易执行完成后剩余的 gas 退回到 gaspool
 	st.gp.AddGas(st.gas)
 }
 

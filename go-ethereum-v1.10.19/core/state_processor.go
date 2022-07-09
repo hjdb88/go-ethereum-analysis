@@ -64,22 +64,27 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 		blockHash   = block.Hash()
 		blockNumber = block.Number()
 		allLogs     []*types.Log
-		gp          = new(GasPool).AddGas(block.GasLimit())
+		// 一个区块能容纳的最大 gas
+		gp = new(GasPool).AddGas(block.GasLimit())
 	)
 	// Mutate the block and state according to any hard-fork specs
 	if p.config.DAOForkSupport && p.config.DAOForkBlock != nil && p.config.DAOForkBlock.Cmp(block.Number()) == 0 {
 		misc.ApplyDAOHardFork(statedb)
 	}
 	blockContext := NewEVMBlockContext(header, p.bc, nil)
+	// 新建 EVM 实例: 创建了 EVM 解释器, 解释器中会根据 cfg 的配置参数选择对应的 jump table
 	vmenv := vm.NewEVM(blockContext, vm.TxContext{}, statedb, p.config, cfg)
 	// Iterate over and process the individual transactions
 	for i, tx := range block.Transactions() {
+		// 将 transaction 转换成 message, message.data = tx.txdata.payload 交易中的 input（合约代码）
 		msg, err := tx.AsMessage(types.MakeSigner(p.config, header.Number), header.BaseFee)
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
 		statedb.Prepare(tx.Hash(), i)
+		// EVM 入口
 		receipt, err := applyTransaction(msg, p.config, p.bc, nil, gp, statedb, blockNumber, blockHash, tx, usedGas, vmenv)
+		// 任何一笔交易执行失败, 直接返回 err
 		if err != nil {
 			return nil, nil, 0, fmt.Errorf("could not apply tx %d [%v]: %w", i, tx.Hash().Hex(), err)
 		}
@@ -94,10 +99,14 @@ func (p *StateProcessor) Process(block *types.Block, statedb *state.StateDB, cfg
 
 func applyTransaction(msg types.Message, config *params.ChainConfig, bc ChainContext, author *common.Address, gp *GasPool, statedb *state.StateDB, blockNumber *big.Int, blockHash common.Hash, tx *types.Transaction, usedGas *uint64, evm *vm.EVM) (*types.Receipt, error) {
 	// Create a new context to be used in the EVM environment.
+	// 新建 EVMContext
 	txContext := NewEVMTxContext(msg)
 	evm.Reset(txContext, statedb)
 
 	// Apply the transaction to the current state (included in the env).
+	// 首先生成 StateTransition 对象, 然后调用其 TransitionDb 方法开始交由 EVM虚拟机 执行该交易
+	// 入参: evm: 虚拟机实例, msg: 交易, gp: gaspool
+	// 返回: 执行交易使用的 gas、错误信息、执行结果或者回滚详细信息
 	result, err := ApplyMessage(evm, msg, gp)
 	if err != nil {
 		return nil, err
