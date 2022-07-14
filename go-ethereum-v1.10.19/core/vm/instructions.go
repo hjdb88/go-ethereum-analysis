@@ -871,6 +871,7 @@ func makeLog(size int) executionFunc {
 // opPush1 is a specialized version of pushN
 func opPush1(pc *uint64, interpreter *EVMInterpreter, scope *ScopeContext) ([]byte, error) {
 	var (
+		// 一共需要执行的步骤数, 即栈所需要的深度
 		codeLen = uint64(len(scope.Contract.Code))
 		integer = new(uint256.Int)
 	)

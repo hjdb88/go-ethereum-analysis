@@ -114,7 +114,31 @@ func (result *ExecutionResult) Revert() []byte {
 	return common.CopyBytes(result.ReturnData)
 }
 
+/*
+	执行成本由该交易需要使用多少以太坊虚拟机(EVM)的资源进行运算来决定的，执行交易的操作越多则执行成本就越高
+	固有成本由交易的负载(payload)决定, 交易负载分为一下三种：
+		1. 创建智能合约的交易, 负载就是创建智能合约的 EVM 代码
+		2. 调用智能合约函数的交易, 负载就是执行消息的输入数据
+		3. 两账户间转账的交易, 负载为空
+	具体计算方式：(以 go-ethereum 1.10.19 版本)
+		设 Ntxdatazeros 代表交易负载中数据为0的字节总数, Ntxdatanozeros 代表交易负载中数据不为0的字节总数,
+		那么该交易的固有成本可以通过以下公式进行计算:
+		// 黄皮书(6.2章公式60): file:///home/hjdb88/Downloads/ethereum_yellow_paper.pdf
+		// 黄皮书中文版(6.2章公式55、56和57), 比原版旧, 仅供参考: https://github.com/yuange1024/ethereum_yellowpaper/blob/master/ethereum_yellow_paper_cn.pdf
+		固有成本 = Gtxdatazeros * Ntxdatazeros + Gtxdatanozeros * Ntxdatanozeros +
+					Gtxcreate +
+					Gtransaction +
+					Gtxaccesslistaddress * Ntxaccesslistaddress + Gtxaccessliststorage * Ntxaccessliststorage
+		其中:
+			Gtxdatazeros: 4 Wei
+			Gtxdatanozeros: 68 Wei (伊斯坦布尔硬分叉EIP2028 之后为 16 Wei)
+			Gtxcreate: 32000 Wei
+			Gtransaction: 21000 Wei
+			Gtxaccesslistaddress: 2400 Wei
+			Gtxaccessliststorage: 1900 Wei
+*/
 // IntrinsicGas computes the 'intrinsic gas' for a message with the given data.
+// 计算进行该笔交易的固有成本
 func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation bool, isHomestead, isEIP2028 bool) (uint64, error) {
 	// Set the starting gas for the raw transaction
 	var gas uint64
@@ -357,7 +381,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	// 判断合约类型, 然后根据类型调用 EVM 执行
 	if contractCreation {
 		// 进行创建合约操作 st.data = message.data() = tx.txdata.payload
-		ret, _, st.gas, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
+		ret /*合约主体*/, _, st.gas /*消耗的 gas */, vmerr = st.evm.Create(sender, st.data, st.gas, st.value)
 	} else {
 		// Increment the nonce for the next transaction
 		st.state.SetNonce(msg.From(), st.state.GetNonce(sender.Address())+1)
@@ -367,11 +391,11 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	// 退还未消耗的 gas
 	if !rules.IsLondon {
 		// Before EIP-3529: refunds were capped to gasUsed / 2
-		// 退款上限为已用 gas 的一半
+		// EIP-3529 之前退款上限为已用 gas 的一半
 		st.refundGas(params.RefundQuotient)
 	} else {
 		// After EIP-3529: refunds are capped to gasUsed / 5
-		// 退款上限为已用 gas 的五分之一
+		// EIP-3529 之后退款上限为已用 gas 的五分之一
 		st.refundGas(params.RefundQuotientEIP3529)
 	}
 	effectiveTip := st.gasPrice
