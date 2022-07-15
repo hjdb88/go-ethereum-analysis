@@ -62,13 +62,16 @@ func (evm *EVM) precompile(addr common.Address) (PrecompiledContract, bool) {
 type BlockContext struct {
 	// CanTransfer returns whether the account contains
 	// sufficient ether to transfer the value
+	// 返回账户是否包含足够的用来传输的以太币
 	CanTransfer CanTransferFunc
 	// Transfer transfers ether from one account to the other
+	// 将以太从一个帐户转移到另一个帐户
 	Transfer TransferFunc
 	// GetHash returns the hash corresponding to n
 	GetHash GetHashFunc
 
 	// Block information
+	// 区块相关信息
 	Coinbase    common.Address // Provides information for COINBASE
 	GasLimit    uint64         // Provides information for GASLIMIT
 	BlockNumber *big.Int       // Provides information for NUMBER
@@ -97,29 +100,38 @@ type TxContext struct {
 // The EVM should never be reused and is not thread safe.
 type EVM struct {
 	// Context provides auxiliary blockchain related information
+	// 辅助信息对象
 	Context BlockContext
 	TxContext
 	// StateDB gives access to the underlying state
+	// 为EVM提供StateDB相关操作
 	StateDB StateDB
 	// Depth is the current call stack
+	// 当前调用的栈
 	depth int
 
 	// chainConfig contains information about the current chain
+	// 链配置信息
 	chainConfig *params.ChainConfig
 	// chain rules contains the chain rules for the current epoch
+	// 链规则
 	chainRules params.Rules
 	// virtual machine configuration options used to initialise the
 	// evm.
+	// 虚拟机配置
 	Config Config
 	// global (to this context) ethereum virtual machine
 	// used throughout the execution of the tx.
+	// 指令解释器
 	interpreter *EVMInterpreter
 	// abort is used to abort the EVM calling operations
 	// NOTE: must be set atomically
+	// 用于终止 EVM 调用操作
 	abort int32
 	// callGasTemp holds the gas available for the current call. This is needed because the
 	// available gas is calculated in gasCall* according to the 63/64 rule and later
 	// applied in opCall*.
+	// 当前 call 可用的 gas
 	callGasTemp uint64
 }
 
