@@ -116,7 +116,9 @@ func NewEVMInterpreter(evm *EVM, cfg Config) *EVMInterpreter {
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
 
 	// Increment the call depth which is restricted to 1024
+	// 计算调用深度+1
 	in.evm.depth++
+	// 设置 defer 执行完毕后调用深度-1
 	defer func() { in.evm.depth-- }()
 
 	// Make sure the readOnly is only set if we aren't in readOnly yet.
