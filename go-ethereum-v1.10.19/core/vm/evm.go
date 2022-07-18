@@ -177,18 +177,23 @@ func (evm *EVM) Interpreter() *EVMInterpreter {
 // parameters. It also handles any necessary value transfer required and takes
 // the necessary steps to create accounts and reverses the state in case of an
 // execution error or failed value transfer.
+// 使用给定的输入作为参数执行与 addr 关联的合约。 还处理所需的任何必要的价值转移，并采取必要的步骤来创建帐户并在执行错误或价值转移失败的情况下回滚状态
 func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas uint64, value *big.Int) (ret []byte, leftOverGas uint64, err error) {
 	// Fail if we're trying to execute above the call depth limit
+	// 判断调用深度是否超过最大限制1024
 	if evm.depth > int(params.CallCreateDepth) {
 		return nil, gas, ErrDepth
 	}
 	// Fail if we're trying to transfer more than the available balance
+	// 判断调用发起者地址是否有充足的余额进行转账操作
 	if value.Sign() != 0 && !evm.Context.CanTransfer(evm.StateDB, caller.Address(), value) {
 		return nil, gas, ErrInsufficientBalance
 	}
+	// 快照, 用于回滚
 	snapshot := evm.StateDB.Snapshot()
 	p, isPrecompile := evm.precompile(addr)
 
+	// 判断地址是否存在
 	if !evm.StateDB.Exist(addr) {
 		if !isPrecompile && evm.chainRules.IsEIP158 && value.Sign() == 0 {
 			// Calling a non existing account, don't do anything, but ping the tracer
@@ -203,8 +208,10 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			}
 			return nil, gas, nil
 		}
+		// 在 Trie 对象中使用该地址创建对应的合约账户
 		evm.StateDB.CreateAccount(addr)
 	}
+	// 转账
 	evm.Context.Transfer(evm.StateDB, caller.Address(), addr, value)
 
 	// Capture the tracer start/end events in debug mode
@@ -223,20 +230,25 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		}
 	}
 
+	// 是否是预设的内置合约
 	if isPrecompile {
 		ret, gas, err = RunPrecompiledContract(p, input, gas)
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
+		// 根据地址获得合约代码
 		code := evm.StateDB.GetCode(addr)
 		if len(code) == 0 {
+			// 没有合约代码
 			ret, err = nil, nil // gas is unchanged
 		} else {
 			addrCopy := addr
 			// If the account has no code, we can abort here
 			// The depth-check is already done, and precompiles handled above
+			// 生成 Contract, 同时设置 Contract 的关键属性
 			contract := NewContract(caller, AccountRef(addrCopy), value, gas)
 			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
+			// 调用解释器运行代码
 			ret, err = evm.interpreter.Run(contract, input, false)
 			gas = contract.Gas
 		}
@@ -245,6 +257,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	// above we revert to the snapshot and consume any gas remaining. Additionally
 	// when we're in homestead this also counts for code storage gas errors.
 	if err != nil {
+		// 回滚
 		evm.StateDB.RevertToSnapshot(snapshot)
 		if err != ErrExecutionReverted {
 			gas = 0

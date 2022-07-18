@@ -131,8 +131,8 @@ func (result *ExecutionResult) Revert() []byte {
 					Gtxaccesslistaddress * Ntxaccesslistaddress + Gtxaccessliststorage * Ntxaccessliststorage
 		其中:
 			Gtxdatazeros: 4 Wei
-			Gtxdatanozeros: 68 Wei (伊斯坦布尔硬分叉EIP2028 之后为 16 Wei)
-			Gtxcreate: 32000 Wei
+			Gtxdatanozeros: 68 Wei (伊斯坦布尔硬分叉 EIP2028 之后为 16 Wei)
+			Gtxcreate: 53000 Wei
 			Gtransaction: 21000 Wei
 			Gtxaccesslistaddress: 2400 Wei
 			Gtxaccessliststorage: 1900 Wei
@@ -142,7 +142,7 @@ func (result *ExecutionResult) Revert() []byte {
 func IntrinsicGas(data []byte, accessList types.AccessList, isContractCreation bool, isHomestead, isEIP2028 bool) (uint64, error) {
 	// Set the starting gas for the raw transaction
 	var gas uint64
-	// 1. 如果是创建合约调用起步价是 530000 gas, 如果是普通合约调用起步价是 21000 gas
+	// 1. 如果是创建合约调用起步价是 53000 gas, 如果是普通合约调用起步价是 21000 gas
 	if isContractCreation && isHomestead {
 		gas = params.TxGasContractCreation
 	} else {
