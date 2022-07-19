@@ -236,7 +236,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 	} else {
 		// Initialise a new contract and set the code that is to be used by the EVM.
 		// The contract is a scoped environment for this execution context only.
-		// 根据地址获得合约代码
+		// 根据调用合约的地址 从Trie对象中获取代码
 		code := evm.StateDB.GetCode(addr)
 		if len(code) == 0 {
 			// 没有合约代码
@@ -247,6 +247,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 			// The depth-check is already done, and precompiles handled above
 			// 生成 Contract, 同时设置 Contract 的关键属性
 			contract := NewContract(caller, AccountRef(addrCopy), value, gas)
+			// 根据调用合约的地址 从Trie对象中获取代码的hash结果
 			contract.SetCallCode(&addrCopy, evm.StateDB.GetCodeHash(addrCopy), code)
 			// 调用解释器运行代码
 			ret, err = evm.interpreter.Run(contract, input, false)

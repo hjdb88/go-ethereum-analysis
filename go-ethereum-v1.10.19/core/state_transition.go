@@ -249,6 +249,7 @@ func (st *StateTransition) buyGas() error {
 
 func (st *StateTransition) preCheck() error {
 	// Only check transactions that are not fake
+	// 检查是否为虚假交易
 	if !st.msg.IsFake() {
 		// Make sure this transaction's nonce is correct.
 		stNonce := st.state.GetNonce(st.msg.From())
@@ -324,7 +325,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 	// 1. 消息调用者的 nonce 正确
 	// 2. 调用者有足够的余额来支付交易费用(gaslimit * gasprice)
 	// 3. 所需的 gas 量在区块中可用
-	// 4. 购买的 gas 足以覆盖固有成本
+	// 4. 支付的 gas 足以覆盖固有成本
 	// 5. 计算固有成本的 gas 时没有溢出
 	// 6. 调用者有足够的余额来支付 **topmost** 调用的资产转移
 
