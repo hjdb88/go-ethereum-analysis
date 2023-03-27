@@ -54,6 +54,7 @@ func (st *Stack) push(d *uint256.Int) {
 	st.data = append(st.data, *d)
 }
 
+// 弹出一个值
 func (st *Stack) pop() (ret uint256.Int) {
 	ret = st.data[len(st.data)-1]
 	st.data = st.data[:len(st.data)-1]
@@ -72,6 +73,7 @@ func (st *Stack) dup(n int) {
 	st.push(&st.data[st.len()-n])
 }
 
+// 取出一个值，值还在栈上
 func (st *Stack) peek() *uint256.Int {
 	return &st.data[st.len()-1]
 }

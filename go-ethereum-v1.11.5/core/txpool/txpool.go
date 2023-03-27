@@ -262,11 +262,11 @@ type TxPool struct {
 	locals  *accountSet // Set of local transaction to exempt from eviction rules
 	journal *journal    // Journal of local transaction to back up to disk
 
-	pending map[common.Address]*list     // All currently processable transactions
-	queue   map[common.Address]*list     // Queued but non-processable transactions
-	beats   map[common.Address]time.Time // Last heartbeat from each known account
-	all     *lookup                      // All transactions to allow lookups
-	priced  *pricedList                  // All transactions sorted by price
+	pending map[common.Address]*list     // All currently processable transactions 所有当前可处理的交易
+	queue   map[common.Address]*list     // Queued but non-processable transactions 排队但不可处理的交易
+	beats   map[common.Address]time.Time // Last heartbeat from each known account 来自每个已知账户的最后心跳
+	all     *lookup                      // All transactions to allow lookups 所有允许查询的交易
+	priced  *pricedList                  // All transactions sorted by price 所有交易按价格排序
 
 	chainHeadCh     chan core.ChainHeadEvent
 	chainHeadSub    event.Subscription
@@ -594,33 +594,41 @@ func (pool *TxPool) local() map[common.Address]types.Transactions {
 
 // validateTx checks whether a transaction is valid according to the consensus
 // rules and adheres to some heuristic limits of the local node (price and size).
+// 根据共识规则检查交易是否有效并遵守本地节点的一些限制（价格和大小）
 func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	// Accept only legacy transactions until EIP-2718/2930 activates.
+	// EIP-2718/2930 之前只支持 Legacy 交易
 	if !pool.eip2718 && tx.Type() != types.LegacyTxType {
 		return core.ErrTxTypeNotSupported
 	}
 	// Reject dynamic fee transactions until EIP-1559 activates.
+	// EIP-1559 之后支持 dynamic fee 交易
 	if !pool.eip1559 && tx.Type() == types.DynamicFeeTxType {
 		return core.ErrTxTypeNotSupported
 	}
 	// Reject transactions over defined size to prevent DOS attacks
+	// 交易大小不超过 131072
 	if tx.Size() > txMaxSize {
 		return ErrOversizedData
 	}
 	// Check whether the init code size has been exceeded.
+	// 上海升级后 init code 大小不超过 49152
 	if pool.shanghai && tx.To() == nil && len(tx.Data()) > params.MaxInitCodeSize {
 		return fmt.Errorf("%w: code size %v limit %v", core.ErrMaxInitCodeSizeExceeded, len(tx.Data()), params.MaxInitCodeSize)
 	}
 	// Transactions can't be negative. This may never happen using RLP decoded
 	// transactions but may occur if you create a transaction using the RPC.
+	// 交易不能为负
 	if tx.Value().Sign() < 0 {
 		return ErrNegativeValue
 	}
 	// Ensure the transaction doesn't exceed the current block limit gas.
+	// 确保交易不超过当前区块 gas 限制
 	if pool.currentMaxGas < tx.Gas() {
 		return ErrGasLimit
 	}
 	// Sanity check for extremely large numbers
+	// 对大数进行健全性检查
 	if tx.GasFeeCap().BitLen() > 256 {
 		return core.ErrFeeCapVeryHigh
 	}
@@ -628,30 +636,36 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 		return core.ErrTipVeryHigh
 	}
 	// Ensure gasFeeCap is greater than or equal to gasTipCap.
+	// gasFeeCap >= gasTipCap
 	if tx.GasFeeCapIntCmp(tx.GasTipCap()) < 0 {
 		return core.ErrTipAboveFeeCap
 	}
 	// Make sure the transaction is signed properly.
+	// 验证交易签名
 	from, err := types.Sender(pool.signer, tx)
 	if err != nil {
 		return ErrInvalidSender
 	}
 	// Drop non-local transactions under our own minimal accepted gas price or tip
+	// 非本地交易在低于能接受的最低 gas 价格或小费时丢弃
 	if !local && tx.GasTipCapIntCmp(pool.gasPrice) < 0 {
 		return ErrUnderpriced
 	}
 	// Ensure the transaction adheres to nonce ordering
+	// 确保交易 nonce 合法
 	if pool.currentState.GetNonce(from) > tx.Nonce() {
 		return core.ErrNonceTooLow
 	}
 	// Transactor should have enough funds to cover the costs
 	// cost == V + GP * GL
+	// 账户 balance 大于等于 value + gasPrice * gasLimit
 	balance := pool.currentState.GetBalance(from)
 	if balance.Cmp(tx.Cost()) < 0 {
 		return core.ErrInsufficientFunds
 	}
 
 	// Verify that replacing transactions will not result in overdraft
+	// 验证加入/替换交易后不会导致透支
 	list := pool.pending[from]
 	if list != nil { // Sender already has pending txs
 		sum := new(big.Int).Add(tx.Cost(), list.totalcost)
@@ -666,6 +680,7 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 	}
 
 	// Ensure the transaction has more gas than the basic tx fee.
+	// 确保交易有比基本交易费用更多的 gas
 	intrGas, err := core.IntrinsicGas(tx.Data(), tx.AccessList(), tx.To() == nil, true, pool.istanbul, pool.shanghai)
 	if err != nil {
 		return err
@@ -683,9 +698,14 @@ func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
 // If a newly added transaction is marked as local, its sending account will be
 // be added to the allowlist, preventing any associated transaction from being dropped
 // out of the pool due to pricing constraints.
+//
+// add 验证事务并将其插入不可执行队列以供稍后挂起的提升和执行。
+// 如果交易是对已经挂起或排队的交易的替代，则如果其价格更高，它将覆盖之前的交易。
+// 如果新添加的交易被标记为本地交易，其发送账户将被添加到允许列表中，以防止任何相关交易因定价限制而被从池中删除。
 func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err error) {
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
+	// 如果交易已存在则丢弃
 	if pool.all.Get(hash) != nil {
 		log.Trace("Discarding already known transaction", "hash", hash)
 		knownTxMeter.Mark(1)
@@ -693,9 +713,11 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	}
 	// Make the local flag. If it's from local source or it's from the network but
 	// the sender is marked as local previously, treat it as the local transaction.
+	// 设置本地标记。 如果是本地来源，或者是网络来源，但发送者之前被标记为本地，则将其视为本地交易。
 	isLocal := local || pool.locals.containsTx(tx)
 
 	// If the transaction fails basic validation, discard it
+	// 校验交易
 	if err := pool.validateTx(tx, isLocal); err != nil {
 		log.Trace("Discarding invalid transaction", "hash", hash, "err", err)
 		invalidTxMeter.Mark(1)
@@ -706,6 +728,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	from, _ := types.Sender(pool.signer, tx)
 
 	// If the transaction pool is full, discard underpriced transactions
+	// 交易池满了则丢弃低价的交易
 	if uint64(pool.all.Slots()+numSlots(tx)) > pool.config.GlobalSlots+pool.config.GlobalQueue {
 		// If the new transaction is underpriced, don't accept it
 		if !isLocal && pool.priced.Underpriced(tx) {
@@ -718,6 +741,8 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		// analysis of what to remove and how, but it runs async. We don't want to
 		// do too many replacements between reorg-runs, so we cap the number of
 		// replacements to 25% of the slots
+		// 我们即将替换一个事务。 重组对删除的内容和删除方式进行了更彻底的分析，但它是异步运行的。
+		// 我们不想在重组运行之间进行太多替换，因此我们将替换次数限制为插槽的 25%
 		if pool.changesSinceReorg > int(pool.config.GlobalSlots/4) {
 			throttleTxMeter.Mark(1)
 			return false, ErrTxPoolOverflow
@@ -726,6 +751,9 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		// New transaction is better than our worse ones, make room for it.
 		// If it's a local transaction, forcibly discard all available transactions.
 		// Otherwise if we can't make enough room for new one, abort the operation.
+		// 新交易比我们最差的交易要好，为它腾出空间。
+		// 如果是本地交易，则强制丢弃所有可用交易。
+		// 否则，如果我们不能为新的空间腾出足够的空间，则中止操作。
 		drop, success := pool.priced.Discard(pool.all.Slots()-int(pool.config.GlobalSlots+pool.config.GlobalQueue)+numSlots(tx), isLocal)
 
 		// Special case, we still can't make the room for the new remote one.
@@ -756,6 +784,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 		}
 
 		// Kick out the underpriced remote transactions.
+		// 剔除定价过低的远程交易
 		for _, tx := range drop {
 			log.Trace("Discarding freshly underpriced transaction", "hash", tx.Hash(), "gasTipCap", tx.GasTipCap(), "gasFeeCap", tx.GasFeeCap())
 			underpricedTxMeter.Mark(1)
@@ -765,8 +794,10 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (replaced bool, err e
 	}
 
 	// Try to replace an existing transaction in the pending pool
+	// 尝试替换pending池中已存在的交易
 	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
 		// Nonce already pending, check if required price bump is met
+		// nonce pending中，确认价格是否满足上涨要求（默认值10%）
 		inserted, old := list.Add(tx, pool.config.PriceBump)
 		if !inserted {
 			pendingDiscardMeter.Mark(1)
@@ -956,14 +987,17 @@ func (pool *TxPool) AddRemote(tx *types.Transaction) error {
 }
 
 // addTxs attempts to queue a batch of transactions if they are valid.
+// 尝试将一批有效的交易进行排队
 func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	// Filter out known ones without obtaining the pool lock or recovering signatures
 	var (
 		errs = make([]error, len(txs))
 		news = make([]*types.Transaction, 0, len(txs))
 	)
+	// 遍历交易
 	for i, tx := range txs {
 		// If the transaction is known, pre-set the error slot
+		// 交易已知，提前设置好错误槽
 		if pool.all.Get(tx.Hash()) != nil {
 			errs[i] = ErrAlreadyKnown
 			knownTxMeter.Mark(1)
@@ -972,6 +1006,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 		// Exclude transactions with invalid signatures as soon as
 		// possible and cache senders in transactions before
 		// obtaining lock
+		// 尽快排除签名无效的交易，并在获取锁之前缓存交易中的发送者
 		_, err := types.Sender(pool.signer, tx)
 		if err != nil {
 			errs[i] = ErrInvalidSender
@@ -979,6 +1014,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 			continue
 		}
 		// Accumulate all unknown transactions for deeper processing
+		// 累积未知交易进行统一处理
 		news = append(news, tx)
 	}
 	if len(news) == 0 {
@@ -986,6 +1022,7 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 	}
 
 	// Process all the new transaction and merge any errors into the original slice
+	// 处理所有新事务并将任何错误合并到原始切片中
 	pool.mu.Lock()
 	newErrs, dirtyAddrs := pool.addTxsLocked(news, local)
 	pool.mu.Unlock()
@@ -1008,10 +1045,12 @@ func (pool *TxPool) addTxs(txs []*types.Transaction, local, sync bool) []error {
 
 // addTxsLocked attempts to queue a batch of transactions if they are valid.
 // The transaction pool lock must be held.
+// 尝试将一批交易排队（如果它们有效）。 必须持有事务池锁。
 func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) ([]error, *accountSet) {
 	dirty := newAccountSet(pool.signer)
 	errs := make([]error, len(txs))
 	for i, tx := range txs {
+		// 加入内存池中
 		replaced, err := pool.add(tx, local)
 		errs[i] = err
 		if err == nil && !replaced {

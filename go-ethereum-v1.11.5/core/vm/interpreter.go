@@ -105,7 +105,9 @@ func NewEVMInterpreter(evm *EVM) *EVMInterpreter {
 // ErrExecutionReverted which means revert-and-keep-gas-left.
 func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
 	// Increment the call depth which is restricted to 1024
+	// 计算调用深度+1
 	in.evm.depth++
+	// 设置 defer 执行完毕后调用深度-1
 	defer func() { in.evm.depth-- }()
 
 	// Make sure the readOnly is only set if we aren't in readOnly yet.
@@ -147,6 +149,7 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// Don't move this deferred function, it's placed before the capturestate-deferred method,
 	// so that it get's executed _after_: the capturestate needs the stacks before
 	// they are returned to the pools
+	// 当执行停止时, 将 stack 放入到 stackPool 中
 	defer func() {
 		returnStack(stack)
 	}()
@@ -167,6 +170,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 	// explicit STOP, RETURN or SELFDESTRUCT is executed, an error occurred during
 	// the execution of one of the operations or until the done flag is set by the
 	// parent context.
+	/*
+		解释器循环运行（上下文）
+		直到执行出现以下情况时停止:
+			1. 遇到显式 STOP、RETURN 或 SELFDESTRUCT
+			2. 执行其中一个操作期间发生错误
+			3. 父上下文设置了 done 标志
+	*/
 	for {
 		if in.evm.Config.Debug {
 			// Capture pre-execution values for tracing.
@@ -174,10 +184,13 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		// Get the operation from the jump table and validate the stack to ensure there are
 		// enough stack items available to perform the operation.
+		// 从跳转表 jump_table.go 中获取一个操作并验证堆栈确保有足够的堆栈项可用于执行该操作
+		// pc 一次取一个字节(两个16进制字符), 对应到跳转表中的操作, (创建合约都是60806040开头，详细查看 https://docs.soliditylang.org/en/v0.8.15/internals/layout_in_memory.html)
 		op = contract.GetOp(pc)
 		operation := in.table[op]
 		cost = operation.constantGas // For tracing
 		// Validate stack
+		// 验证堆栈, 以太坊命令执行规定了最大和最小堆栈数量
 		if sLen := stack.len(); sLen < operation.minStack {
 			return nil, &ErrStackUnderflow{stackLen: sLen, required: operation.minStack}
 		} else if sLen > operation.maxStack {
@@ -188,25 +201,33 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 		}
 		if operation.dynamicGas != nil {
 			// All ops with a dynamic memory usage also has a dynamic gas cost.
+			// 所有具有动态内存使用的操作也有动态的 gas 成本
 			var memorySize uint64
 			// calculate the new memory size and expand the memory to fit
 			// the operation
 			// Memory check needs to be done prior to evaluating the dynamic gas portion,
 			// to detect calculation overflows
+			// 计算新开的内存大小并扩展内存以适应该操作
+			// 在计算动态 gas 部分之前需要进行内存检查，以检测计算溢出
 			if operation.memorySize != nil {
+				// 计算当前操作所需消耗的内存空间
 				memSize, overflow := operation.memorySize(stack)
 				if overflow {
 					return nil, ErrGasUintOverflow
 				}
 				// memory is expanded in words of 32 bytes. Gas
 				// is also calculated in words.
+				// 内存以 32 字节的字扩展，gas也是用字来计算的。
 				if memorySize, overflow = math.SafeMul(toWordSize(memSize), 32); overflow {
 					return nil, ErrGasUintOverflow
 				}
 			}
 			// Consume the gas and return an error if not enough gas is available.
 			// cost is explicitly set so that the capture state defer method can get the proper cost
+			// 如果没有足够的可用 gas ，则消耗 gas 并返回错误
+			// 计算该操作的动态 gas 消耗数量
 			var dynamicCost uint64
+			// 引用该操作的 operation 对象的 gas 方法完成计算
 			dynamicCost, err = operation.dynamicGas(in.evm, contract, stack, mem, memorySize)
 			cost += dynamicCost // for tracing
 			if err != nil || !contract.UseGas(dynamicCost) {
@@ -217,7 +238,9 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 				in.evm.Config.Tracer.CaptureState(pc, op, gasCopy, cost, callContext, in.returnData, in.evm.depth, err)
 				logged = true
 			}
+			// 分配更多的内存
 			if memorySize > 0 {
+				// 实际上是在原来的 mem 中加上当前操作需要的内存大小
 				mem.Resize(memorySize)
 			}
 		} else if in.evm.Config.Debug {
@@ -225,10 +248,12 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (
 			logged = true
 		}
 		// execute the operation
+		// 执行操作, 调用 operation 对象定义的 execute 方法
 		res, err = operation.execute(&pc, in, callContext)
 		if err != nil {
 			break
 		}
+		// pc 加一读取下一个指令
 		pc++
 	}
 

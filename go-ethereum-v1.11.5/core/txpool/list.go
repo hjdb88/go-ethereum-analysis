@@ -283,6 +283,7 @@ func (l *list) Overlaps(tx *types.Transaction) bool {
 // thresholds are also potentially updated.
 func (l *list) Add(tx *types.Transaction, priceBump uint64) (bool, *types.Transaction) {
 	// If there's an older better transaction, abort
+	// 如果旧的交易更好则停止
 	old := l.txs.Get(tx.Nonce())
 	if old != nil {
 		if old.GasFeeCapCmp(tx) >= 0 || old.GasTipCapCmp(tx) >= 0 {
@@ -305,9 +306,11 @@ func (l *list) Add(tx *types.Transaction, priceBump uint64) (bool, *types.Transa
 			return false, nil
 		}
 		// Old is being replaced, subtract old cost
+		// 移除旧交易花费
 		l.subTotalCost([]*types.Transaction{old})
 	}
 	// Add new tx cost to totalcost
+	// 新增新交易花费
 	l.totalcost.Add(l.totalcost, tx.Cost())
 	// Otherwise overwrite the old transaction with the current one
 	l.txs.Put(tx)

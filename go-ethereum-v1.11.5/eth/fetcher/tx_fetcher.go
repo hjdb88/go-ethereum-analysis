@@ -115,9 +115,9 @@ type txRequest struct {
 // txDelivery is the notification that a batch of transactions have been added
 // to the pool and should be untracked.
 type txDelivery struct {
-	origin string        // Identifier of the peer originating the notification
-	hashes []common.Hash // Batch of transaction hashes having been delivered
-	direct bool          // Whether this is a direct reply or a broadcast
+	origin string        // Identifier of the peer originating the notification 发起通知的对等方的标识符
+	hashes []common.Hash // Batch of transaction hashes having been delivered 已交付的一批交易哈希
+	direct bool          // Whether this is a direct reply or a broadcast 这是直接回复还是广播
 }
 
 // txDrop is the notification that a peer has disconnected.
@@ -213,6 +213,7 @@ func NewTxFetcherForTests(
 
 // Notify announces the fetcher of the potential availability of a new batch of
 // transactions in the network.
+// Notify 向 fetcher 宣布网络中新一批交易的潜在可用性
 func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 	// Keep track of all the announced transactions
 	txAnnounceInMeter.Mark(int64(len(hashes)))
@@ -261,6 +262,7 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 // and the fetcher. This method may be called by both transaction broadcasts and
 // direct request replies. The differentiation is important so the fetcher can
 // re-schedule missing transactions as soon as possible.
+// Enqueue 将一批接收到的交易导入交易池和 fetcher。 交易广播和直接请求回复都可以调用此方法。 区分很重要，因此提取器可以尽快重新安排丢失的事务。
 func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) error {
 	var (
 		inMeter          = txReplyInMeter
@@ -279,6 +281,7 @@ func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) 
 
 	// Push all the transactions into the pool, tracking underpriced ones to avoid
 	// re-requesting them and dropping the peer in case of malicious transfers.
+	// 将所有交易推入池中，跟踪定价过低的交易以避免重新请求它们并在恶意转移的情况下丢弃对等方
 	var (
 		added = make([]common.Hash, 0, len(txs))
 	)

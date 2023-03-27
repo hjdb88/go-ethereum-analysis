@@ -126,6 +126,7 @@ type handler struct {
 }
 
 // newHandler returns a handler for all Ethereum chain management protocol.
+// 返回所有以太坊链管理协议的处理程序
 func newHandler(config *handlerConfig) (*handler, error) {
 	// Create the protocol manager with the base fields
 	if config.EventMux == nil {
@@ -301,6 +302,7 @@ func newHandler(config *handlerConfig) (*handler, error) {
 		}
 		return p.RequestTxs(hashes)
 	}
+	// 交易放入内存池中
 	h.txFetcher = fetcher.NewTxFetcher(h.txpool.Has, h.txpool.AddRemotes, fetchTx)
 	h.chainSync = newChainSyncer(h)
 	return h, nil
@@ -539,6 +541,7 @@ func (h *handler) unregisterPeer(id string) {
 	}
 }
 
+// 广播处理
 func (h *handler) Start(maxPeers int) {
 	h.maxPeers = maxPeers
 
