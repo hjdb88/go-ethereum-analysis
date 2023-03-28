@@ -52,9 +52,11 @@ func (h *nonceHeap) Pop() interface{} {
 
 // sortedMap is a nonce->transaction hash map with a heap based index to allow
 // iterating over the contents in a nonce-incrementing way.
+// sortedMap是一个具有基于堆的索引的 nonce -> 交易 的hashmap，允许以nonce递增的方式迭代内容。
+// 存储同一账号下的所有交易
 type sortedMap struct {
 	items map[uint64]*types.Transaction // Hash map storing the transaction data
-	index *nonceHeap                    // Heap of nonces of all the stored transactions (non-strict mode)
+	index *nonceHeap                    // Heap of nonces of all the stored transactions (non-strict mode) 实现heap.Interface，默认采用最小堆
 	cache types.Transactions            // Cache of the transactions already sorted
 }
 
@@ -250,6 +252,7 @@ func (m *sortedMap) LastElement() *types.Transaction {
 // nonce. The same type can be used both for storing contiguous transactions for
 // the executable/pending queue; and for storing gapped transactions for the non-
 // executable/future queue, with minor behavioral changes.
+// list 是属于同一个账号的交易列表，按照nonce排序。
 type list struct {
 	strict bool       // Whether nonces are strictly continuous or not
 	txs    *sortedMap // Heap indexed sorted hash map of the transactions
@@ -261,6 +264,7 @@ type list struct {
 
 // newList create a new transaction list for maintaining nonce-indexable fast,
 // gapped, sortable transaction lists.
+// newList 创建一个新的交易列表，用于快速维护 nonce-indexable
 func newList(strict bool) *list {
 	return &list{
 		strict:    strict,
@@ -272,6 +276,7 @@ func newList(strict bool) *list {
 
 // Overlaps returns whether the transaction specified has the same nonce as one
 // already contained within the list.
+// 返回给定交易是否具有相同 nonce 的交易
 func (l *list) Overlaps(tx *types.Transaction) bool {
 	return l.txs.Get(tx.Nonce()) != nil
 }
@@ -326,6 +331,7 @@ func (l *list) Add(tx *types.Transaction, priceBump uint64) (bool, *types.Transa
 // Forward removes all transactions from the list with a nonce lower than the
 // provided threshold. Every removed transaction is returned for any post-removal
 // maintenance.
+// 移除 nonce 低于给定值得交易并返回它们
 func (l *list) Forward(threshold uint64) types.Transactions {
 	txs := l.txs.Forward(threshold)
 	l.subTotalCost(txs)
@@ -509,6 +515,7 @@ func (h *priceHeap) Pop() interface{} {
 // In some cases (during a congestion, when blocks are full) the urgent heap can provide
 // better candidates for inclusion while in other cases (at the top of the baseFee peak)
 // the floating heap is better. When baseFee is decreasing they behave similarly.
+// 基于价格排序的堆
 type pricedList struct {
 	// Number of stale price points to (re-heap trigger).
 	stales atomic.Int64

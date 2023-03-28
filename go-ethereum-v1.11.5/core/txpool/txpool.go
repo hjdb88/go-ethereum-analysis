@@ -263,7 +263,7 @@ type TxPool struct {
 	journal *journal    // Journal of local transaction to back up to disk
 
 	pending map[common.Address]*list     // All currently processable transactions 所有当前可处理的交易
-	queue   map[common.Address]*list     // Queued but non-processable transactions 排队但不可处理的交易
+	queue   map[common.Address]*list     // Queued but non-processable transactions 排队但不可处理的交易(比如说nonce太高)，放在queue中等待能够执行
 	beats   map[common.Address]time.Time // Last heartbeat from each known account 来自每个已知账户的最后心跳
 	all     *lookup                      // All transactions to allow lookups 所有允许查询的交易
 	priced  *pricedList                  // All transactions sorted by price 所有交易按价格排序
