@@ -48,9 +48,11 @@ type Database interface {
 	CopyTrie(Trie) Trie
 
 	// ContractCode retrieves a particular contract's code.
+	// 获取合约代码
 	ContractCode(addrHash, codeHash common.Hash) ([]byte, error)
 
 	// ContractCodeSize retrieves a particular contracts code's size.
+	// 检索合约大小
 	ContractCodeSize(addrHash, codeHash common.Hash) (int, error)
 
 	// DiskDB returns the underlying key-value disk database.
@@ -156,8 +158,8 @@ func NewDatabaseWithNodeDB(db ethdb.Database, triedb *trie.Database) Database {
 
 type cachingDB struct {
 	disk          ethdb.KeyValueStore
-	codeSizeCache *lru.Cache[common.Hash, int]
-	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte]
+	codeSizeCache *lru.Cache[common.Hash, int]                   // 合约大小缓存
+	codeCache     *lru.SizeConstrainedCache[common.Hash, []byte] // 合约代码缓存
 	triedb        *trie.Database
 }
 

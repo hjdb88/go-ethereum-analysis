@@ -35,19 +35,24 @@ import (
 // ChainIndexerBackend defines the methods needed to process chain segments in
 // the background and write the segment results into the database. These can be
 // used to create filter blooms or CHTs.
+// ChainIndexerBackend 定义了在后台处理链片段，并将结果写入数据库。BloomIndexer 就是实现了这个接口 ChainIndexerBackend
 type ChainIndexerBackend interface {
 	// Reset initiates the processing of a new chain segment, potentially terminating
 	// any partially completed operations (in case of a reorg).
+	// 启动新链分段处理，会中止未完成的操作
 	Reset(ctx context.Context, section uint64, prevHead common.Hash) error
 
 	// Process crunches through the next header in the chain segment. The caller
 	// will ensure a sequential order of headers.
+	// 处理链分段的下一个标头
 	Process(ctx context.Context, header *types.Header) error
 
 	// Commit finalizes the section metadata and stores it into the database.
+	// 完成段元数据并存储到数据库
 	Commit() error
 
 	// Prune deletes the chain index older than the given threshold.
+	// 根据给定的阈值，删除旧的链索引
 	Prune(threshold uint64) error
 }
 

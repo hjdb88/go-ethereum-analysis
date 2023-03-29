@@ -24,6 +24,7 @@ import (
 
 // journalEntry is a modification entry in the state change journal that can be
 // reverted on demand.
+// 状态更改日志
 type journalEntry interface {
 	// revert undoes the changes introduced by this journal entry.
 	revert(*StateDB)
@@ -145,6 +146,7 @@ type (
 	}
 )
 
+// 创建的对象回滚：将创建的对象删除
 func (ch createObjectChange) revert(s *StateDB) {
 	delete(s.stateObjects, *ch.account)
 	delete(s.stateObjectsDirty, *ch.account)
@@ -154,6 +156,7 @@ func (ch createObjectChange) dirtied() *common.Address {
 	return ch.account
 }
 
+// 修改的对象回滚：将修改前的对象替换回来
 func (ch resetObjectChange) revert(s *StateDB) {
 	s.setStateObject(ch.prev)
 	if !ch.prevdestruct {
@@ -165,6 +168,7 @@ func (ch resetObjectChange) dirtied() *common.Address {
 	return nil
 }
 
+// 账号删除回滚：从StateDB中恢复
 func (ch suicideChange) revert(s *StateDB) {
 	obj := s.getStateObject(*ch.account)
 	if obj != nil {

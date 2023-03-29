@@ -39,8 +39,8 @@ type response struct {
 // the results to minimize network/database overhead even in complex filtering
 // scenarios.
 type scheduler struct {
-	bit       uint                 // Index of the bit in the bloom filter this scheduler is responsible for
-	responses map[uint64]*response // Currently pending retrieval requests or already cached responses
+	bit       uint                 // Index of the bit in the bloom filter this scheduler is responsible for 布隆过滤器的对应bit位
+	responses map[uint64]*response // Currently pending retrieval requests or already cached responses 当前挂起的检索请求或已缓存的响应
 	lock      sync.Mutex           // Lock protecting the responses from concurrent access
 }
 
@@ -59,6 +59,9 @@ func newScheduler(idx uint) *scheduler {
 func (s *scheduler) run(sections chan uint64, dist chan *request, done chan []byte, quit chan struct{}, wg *sync.WaitGroup) {
 	// Create a forwarder channel between requests and responses of the same size as
 	// the distribution channel (since that will block the pipeline anyway).
+	// sections 通道类型，这个是用来传递需要检索的section的通道，输入参数
+	// dist     通道类型，属于输出通道(可能是网络发送或者是本地检索)，往这个通道上发送请求， 然后在done上获取回应。
+	// done     通道类型，用来传递检索结果的通道， 可以理解为返回值通道。
 	pend := make(chan uint64, cap(dist))
 
 	// Start the pipeline schedulers to forward between user -> distributor -> user
@@ -70,6 +73,7 @@ func (s *scheduler) run(sections chan uint64, dist chan *request, done chan []by
 // reset cleans up any leftovers from previous runs. This is required before a
 // restart to ensure the no previously requested but never delivered state will
 // cause a lockup.
+// 清理之前的所有任何请求
 func (s *scheduler) reset() {
 	s.lock.Lock()
 	defer s.lock.Unlock()

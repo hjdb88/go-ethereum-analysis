@@ -209,6 +209,7 @@ func TransactionToMessage(tx *types.Transaction, s types.Signer, baseFee *big.In
 // the gas used (which includes gas refunds) and an error if it failed. An error always
 // indicates a core error meaning that the message would always fail for that particular
 // state and would never be accepted within a block.
+// 生成新的状态转换对象
 func ApplyMessage(evm *vm.EVM, msg *Message, gp *GasPool) (*ExecutionResult, error) {
 	return NewStateTransition(evm, msg, gp).TransitionDb()
 }
@@ -235,13 +236,27 @@ func ApplyMessage(evm *vm.EVM, msg *Message, gp *GasPool) (*ExecutionResult, err
 //
 //  5. Run Script section
 //  6. Derive new state root
+//
+// 状态转换模型
+// 状态转换是将事务应用于当前世界时所做的状态更改。状态转换模型完成所有必要的工作来制定一个有效的新状态根。
+//
+// 1. nonce处理
+// 2. 预付gas
+// 3. 如果接收者为nil，则创建一个新的状态对象
+// 4. 转账
+// == 如果创建合约 ==
+// 4a. 尝试运行交易数据
+// 4b. 如果有效，使用结果作为新状态对象的代码
+// == 结束 ==
+// 5. 运行脚本部分
+// 6. 导出新的状态根
 type StateTransition struct {
-	gp           *GasPool
-	msg          *Message
-	gasRemaining uint64
-	initialGas   uint64
+	gp           *GasPool // 用来追踪区块内的gas使用情况
+	msg          *Message // 交易内容
+	gasRemaining uint64   // 剩余gas
+	initialGas   uint64   // 初始gas
 	state        vm.StateDB
-	evm          *vm.EVM
+	evm          *vm.EVM // 虚拟机
 }
 
 // NewStateTransition initialises and returns a new state transition object.
@@ -436,7 +451,7 @@ func (st *StateTransition) TransitionDb() (*ExecutionResult, error) {
 		ret, st.gasRemaining, vmerr = st.evm.Call(sender, st.to(), msg.Data, st.gasRemaining, msg.Value)
 	}
 
-	// TODOMARK 为什么要退？要这样退？
+	// TODOMARK 为什么要退？要这样退？ 退税是为了奖励大家运行一些能够减轻区块链负担的指令，比如清空账户的storage或者是运行suicide命令来清空账号。
 	// 退还未消耗的 gas
 	if !rules.IsLondon {
 		// Before EIP-3529: refunds were capped to gasUsed / 2
