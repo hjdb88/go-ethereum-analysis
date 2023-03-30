@@ -262,7 +262,7 @@ func (f *TxFetcher) Notify(peer string, hashes []common.Hash) error {
 // and the fetcher. This method may be called by both transaction broadcasts and
 // direct request replies. The differentiation is important so the fetcher can
 // re-schedule missing transactions as soon as possible.
-// Enqueue 将一批接收到的交易导入交易池和 fetcher。 交易广播和直接请求回复都可以调用此方法。 区分很重要，因此提取器可以尽快重新安排丢失的事务。
+// Enqueue 将一批接收到的交易导入交易池和 fetcher。 交易广播和直接请求回复都可以调用此方法。 区分很重要，因此提取器可以尽快重新安排丢失的交易。
 func (f *TxFetcher) Enqueue(peer string, txs []*types.Transaction, direct bool) error {
 	var (
 		inMeter          = txReplyInMeter

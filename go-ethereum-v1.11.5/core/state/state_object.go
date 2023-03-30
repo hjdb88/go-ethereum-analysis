@@ -60,15 +60,22 @@ func (s Storage) Copy() Storage {
 // First you need to obtain a state object.
 // Account values can be accessed and modified through the object.
 // Finally, call commitTrie to write the modified storage trie into a database.
+
+// stateObject 表示正在修改的以太坊帐户。
+// 使用模式如下：
+// 首先你需要获得一个状态对象。
+// 可以通过该对象访问和修改帐户值。
+// 最后调用commitTrie将修改后的存储trie写入数据库。
 type stateObject struct {
 	address  common.Address
-	addrHash common.Hash // hash of ethereum address of the account
-	data     types.StateAccount
-	db       *StateDB
+	addrHash common.Hash        // hash of ethereum address of the account 以太坊账号地址的hash
+	data     types.StateAccount // 实际的以太坊账号信息
+	db       *StateDB           // 状态数据库
 
 	// Write caches.
+	// 写缓存
 	trie Trie // storage trie, which becomes non-nil on first access
-	code Code // contract bytecode, which gets set when code is loaded
+	code Code // contract bytecode, which gets set when code is loaded 合约代码
 
 	originStorage  Storage // Storage cache of original entries to dedup rewrites, reset for every transaction
 	pendingStorage Storage // Storage entries that need to be flushed to disk, at the end of an entire block
@@ -110,6 +117,7 @@ func newObject(db *StateDB, address common.Address, data types.StateAccount) *st
 }
 
 // EncodeRLP implements rlp.Encoder.
+// RLP编码只会编码 StateAccount
 func (s *stateObject) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, &s.data)
 }
@@ -350,6 +358,7 @@ func (s *stateObject) updateRoot(db Database) {
 
 // commitTrie submits the storage changes into the storage trie and re-computes
 // the root. Besides, all trie changes will be collected in a nodeset and returned.
+// commitTrie 将存储更改提交到存储 trie 并重新计算根。此外，所有的 trie 变化都将收集在一个节点集中并返回。
 func (s *stateObject) commitTrie(db Database) (*trie.NodeSet, error) {
 	tr, err := s.updateTrie(db)
 	if err != nil {

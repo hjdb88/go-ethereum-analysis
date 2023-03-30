@@ -86,6 +86,7 @@ func (m *sortedMap) Put(tx *types.Transaction) {
 // Forward removes all transactions from the map with a nonce lower than the
 // provided threshold. Every removed transaction is returned for any post-removal
 // maintenance.
+// 删除所有 nonce 低于给定阈值的交易
 func (m *sortedMap) Forward(threshold uint64) types.Transactions {
 	var removed types.Transactions
 

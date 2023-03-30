@@ -238,7 +238,7 @@ func ApplyMessage(evm *vm.EVM, msg *Message, gp *GasPool) (*ExecutionResult, err
 //  6. Derive new state root
 //
 // 状态转换模型
-// 状态转换是将事务应用于当前世界时所做的状态更改。状态转换模型完成所有必要的工作来制定一个有效的新状态根。
+// 状态转换是将交易应用于当前世界时所做的状态更改。状态转换模型完成所有必要的工作来制定一个有效的新状态根。
 //
 // 1. nonce处理
 // 2. 预付gas

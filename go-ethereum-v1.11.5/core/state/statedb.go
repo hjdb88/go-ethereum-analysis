@@ -57,6 +57,8 @@ func (n *proofList) Delete(key []byte) error {
 // nested states. It's the general query interface to retrieve:
 // * Contracts
 // * Accounts
+// 以太坊协议中的 StateDB 结构用于存储 merkle trie 中的任何内容。
+// StateDB 负责缓存和存储嵌套状态。它是检索的通用查询接口：合约和账户。
 type StateDB struct {
 	db         Database
 	prefetcher *triePrefetcher
@@ -73,10 +75,10 @@ type StateDB struct {
 	snapStorage  map[common.Hash]map[common.Hash][]byte
 
 	// This map holds 'live' objects, which will get modified while processing a state transition.
-	stateObjects         map[common.Address]*stateObject
-	stateObjectsPending  map[common.Address]struct{} // State objects finalized but not yet written to the trie
-	stateObjectsDirty    map[common.Address]struct{} // State objects modified in the current execution
-	stateObjectsDestruct map[common.Address]struct{} // State objects destructed in the block
+	stateObjects         map[common.Address]*stateObject // 用来缓存对象
+	stateObjectsPending  map[common.Address]struct{}     // State objects finalized but not yet written to the trie 已完成的状态对象但未写入 trie
+	stateObjectsDirty    map[common.Address]struct{}     // State objects modified in the current execution 当前执行中已修改的状态对象
+	stateObjectsDestruct map[common.Address]struct{}     // State objects destructed in the block 状态对象在块中销毁
 
 	// DB error.
 	// State objects are used by the consensus core and VM which are
@@ -105,6 +107,7 @@ type StateDB struct {
 
 	// Journal of state modifications. This is the backbone of
 	// Snapshot and RevertToSnapshot.
+	// 状态修改日志
 	journal        *journal
 	validRevisions []revision
 	nextRevisionId int

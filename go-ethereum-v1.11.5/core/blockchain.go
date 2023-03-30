@@ -245,7 +245,7 @@ func NewBlockChain(db ethdb.Database, cacheConfig *CacheConfig, genesis *Genesis
 	// Setup the genesis block, commit the provided genesis specification
 	// to database if the genesis block is not present yet, or load the
 	// stored one from database.
-	// 加载创世区块
+	// 设置创世区块
 	chainConfig, genesisHash, genesisErr := SetupGenesisBlockWithOverride(db, triedb, genesis, overrides)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
 		return nil, genesisErr
@@ -1502,6 +1502,7 @@ func (bc *BlockChain) writeBlockAndSetHead(block *types.Block, receipts []*types
 //
 // TODO after the transition, the future block shouldn't be kept. Because
 // it's not checked in the Geth side anymore.
+// 检查块是否在最大允许窗口内以接受未来处理，如果块太靠前且未添加则返回错误。
 func (bc *BlockChain) addFutureBlock(block *types.Block) error {
 	max := uint64(time.Now().Unix() + maxTimeFutureBlocks)
 	if block.Time() > max {
@@ -1765,13 +1766,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 		}
 
 		// Enable prefetching to pull in trie node paths while processing transactions
-		// 启用预取以在处理事务时拉入 trie 节点路径
+		// 启用预取以在处理交易时拉入 trie 节点路径
 		statedb.StartPrefetcher("chain")
 		activeState = statedb
 
 		// If we have a followup block, run that against the current state to pre-cache
 		// transactions and probabilistically some of the account/storage trie nodes.
-		// 如果我们有一个后续块，针对当前状态运行它以预缓存事务和概率上的一些帐户/存储 trie 节点
+		// 如果我们有一个后续块，针对当前状态运行它以预缓存交易和概率上的一些帐户/存储 trie 节点
 		var followupInterrupt uint32
 		if !bc.cacheConfig.TrieCleanNoPrefetch {
 			if followup, err := it.peek(); followup != nil && err == nil {
@@ -1924,6 +1925,8 @@ func (bc *BlockChain) insertChain(chain types.Blocks, verifySeals, setHead bool)
 // The method writes all (header-and-body-valid) blocks to disk, then tries to
 // switch over to the new chain if the TD exceeded the current chain.
 // insertSideChain is only used pre-merge.
+// 在导入批次遇到修剪后的祖先错误时调用，这种情况发生在发现具有足够旧的分叉块的侧链时。
+// 该方法将所有（header-and-body-valid）块写入磁盘，然后如果 TD 超出当前链则尝试切换到新链。 insertSideChain 仅在合并前使用。
 func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (int, error) {
 	var (
 		externTd  *big.Int
@@ -1987,6 +1990,7 @@ func (bc *BlockChain) insertSideChain(block *types.Block, it *insertIterator) (i
 	//
 	// If the externTd was larger than our local TD, we now need to reimport the previous
 	// blocks to regenerate the required state
+	// 如果 externTd 大于我们的本地 TD，我们现在需要重新导入之前的块以重新生成所需的状态
 	reorg, err := bc.forker.ReorgNeeded(current, lastBlock.Header())
 	if err != nil {
 		return it.index, err
